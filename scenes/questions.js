@@ -1,13 +1,13 @@
 const outdent = require('outdent')
 const Extra = require('telegraf/extra')
-
-const {AgahCompetition} = require('../prepareDB')
-const {resolveActiveCompetitions, resolveCompetition} = require('../functions')
+const TelegrafInlineMenu = require('telegraf-inline-menu')
 
 const {BaseScene} = require('./base-scene')
+const {AgahCompetition} = require('../prepareDB')
+const {resolveActiveCompetitions, resolveCompetition} = require('../functions')
 const {BASHGAH_ORIGIN} = require('../values')
 const {RLM} = require('../constants')
-const {getOrDefineDeepPath} = require('../utils')
+const {getOrDefineDeepPath, callbackButton2} = require('../utils')
 
 /**
  * Created on 1398/12/1 (2020/2/20).
@@ -31,7 +31,7 @@ class QuestionsScene extends BaseScene {
 		super.onEnter(ctx)
 		
 		const activeCompetitions = await resolveActiveCompetitions()
-		console.log(activeCompetitions.length)
+		console.log('activeCompetitions.length:', activeCompetitions.length)
 		
 		// upsert-many (https://stackoverflow.com/a/60330161/5318303):
 		const upserts = activeCompetitions.map(competition => ({
@@ -50,14 +50,8 @@ class QuestionsScene extends BaseScene {
 		const oneCode = '➊'.charCodeAt(0)
 		const fa = new Intl.NumberFormat('fa-IR', {useGrouping: false})
 		
-		await Promise.all(activeCompetitions/*.filter((e, i) => i===0)*/.map(competition => (async () => {
+		await Promise.all(activeCompetitions/*.filter((e, i) => i === 0)*/.map(competition => (async () => {
 			const url = `${BASHGAH_ORIGIN}/Question/${competition.code}`
-			
-			const options = competition.options.map((option, i) => ({
-				num: String.fromCharCode(oneCode + i),
-				num2: String.fromCharCode(oneCode + i),
-				body: option.body,
-			}))
 			
 			const qBody = competition.body.replace(/(&zwnj;)|(&nbsp;)/ig, (match, zwng, nbsp) => {
 				if (zwng) return '\u200C'
@@ -66,17 +60,18 @@ class QuestionsScene extends BaseScene {
 			
 			const qCodeFa = `<a href="${url}">${fa.format(competition.code)}</a>` + RLM
 			const hashTag = competition.score === 0 ? 'جسورانه' : fa.format(competition.score) + '_امتیازی'
-
+			
 			const caption = outdent`
 								#${QUESTION_HASH_TAG} ${qCodeFa} (#${hashTag}):\n
 								${qBody}\n
 								@BashgahAuto_bot
 							`
 			
-			const keyboardCB = markup => markup.inlineKeyboard(
-					options.map(option => markup.callbackButton(
-							`${option.num2} ${option.body}`, 'delete')
-					), {columns: 1})
+			const keyboardCB = markup => markup.inlineKeyboard(competition.options.map((option, i) =>
+					callbackButton2.bind(markup)(`${String.fromCharCode(oneCode + i)}${RLM} ${option.body}`, ctx => {
+						ctx.reply(option.body)
+						ctx.answerCbQuery()
+					}/*, `agah:bashgah:competitionAnswer:${competition.code}:${i}`*/)), {columns: 1})
 			
 			let photoHandler = getOrDefineDeepPath.bind(gCompetitions)(competition.code, 'photoFileId')
 			if (!photoHandler) {

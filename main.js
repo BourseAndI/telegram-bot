@@ -1,17 +1,14 @@
 /* global require, process */
 // require('./intl')
+const http = require('http')
 const Telegraf = require('telegraf')
-const Extra = require('telegraf/extra')
-const Markup = require('telegraf/markup')
 const session = require('telegraf/session')
 const Stage = require('telegraf/stage')
-const {getExternalIP} = require('./utils')
-const {WELCOME_MESSAGE} = require('./values')
+const uuidV4 = require('uuid').v4
 
-const {
-	dbConnectionPromise,
-	TgUser,
-} = require('./prepareDB')
+const {getExternalIP, writeHeadAndEnd} = require('./utils')
+const {HTTP_STATUS, CONTENT_TYPES} = require('./constants')
+const {dbConnectionPromise, TgUser} = require('./prepareDB')
 
 /**
  * Created on 1398/11/24 (2020/2/13).
@@ -22,35 +19,6 @@ const env = process.env
 
 getExternalIP().then(console.log.bind(console, 'Public IP:')).catch(console.error.bind(console))
 
-const PORT = env.PORT || 6000
-
-// http.createServer((req, res) => {
-// 	console.log(req.url)
-// 	return res.end('Hello world!')
-// }).listen(PORT)
-// console.log(`Listening on port ${PORT} ...`)
-//***********************************************************************************************************/
-
-// const bot = new Telegraf(env.BOT_TOKEN)
-// bot.catch((err, ctx) => console.log(`Ooops! The bot encountered an error for ${ctx.updateType}`, err))
-//
-// // Register session middleware
-// bot.use(session())
-//
-// // Register logger middleware
-// bot.use((ctx, next) => {
-// 	const startTime = new Date()
-// 	return next().then(() => {
-// 		const ms = new Date() - startTime
-// 		console.log('response time %sms', ms)
-// 	})
-// })
-
-const keyboard = Markup.inlineKeyboard([
-	Markup.urlButton('❤️', 'http://telegraf.js.org'),
-	Markup.callbackButton('Delete', 'delete')
-])
-
 // Handler factories
 const {enter, leave} = Stage
 
@@ -58,13 +26,9 @@ const {enter, leave} = Stage
 const stage = new Stage()
 stage.command('cancel', leave())
 
-// Scene registration
-const {
-	UsernameScene,
-	PasswordScene,
-} = require('./scenes/greeter')
+// Scene registration:
+const {UsernameScene, PasswordScene} = require('./scenes/greeter')
 const {QuestionsScene} = require('./scenes/questions')
-
 stage.register(
 		new UsernameScene(),
 		new PasswordScene(),
@@ -120,13 +84,65 @@ bot.command(['q', 'questions'], ctx => {
 	ctx.scene.enter('questions')
 })
 
-dbConnectionPromise.then(async () =>
-		await bot.launch(env.REMOTE_HOST && {
-			webhook: {
-				domain: 'https://' + env.REMOTE_HOST,
-				port: PORT,
-			}
-		}).then(() => {
-			console.log(new Date().toLocaleString('en-ZA-u-ca-persian') + ':', 'Bot started as', bot.options.username)
-		})
-).catch(console.error.bind(console, 'DB connection error:'))
+global['actions'] = {}
+bot.action(/.+/, async (ctx, next) => {
+	console.log(ctx.match[0])
+	const action = global['actions'][ctx.match[0]]
+	
+	if (action) return await action(ctx, next)
+	
+	next()
+})
+
+dbConnectionPromise.then(async () => {
+	if (env.REMOTE_HOST) {
+		const PORT = env.PORT || 6000
+		const hookPath = '/' + uuidV4()
+		const webhookCallback = bot.webhookCallback(hookPath)
+		
+		http.createServer(async (req, res) => {
+			const url = req.url
+			//console.log(url)
+			
+			if (url === hookPath) return webhookCallback(req, res)
+			
+			if (url === '/?ping') return writeHeadAndEnd.bind(res)({
+				headers: CONTENT_TYPES.TEXT,
+				data: 'pong'
+			})
+			
+			writeHeadAndEnd.bind(res)({status: HTTP_STATUS.NOT_FOUND})
+		}).listen(PORT)
+		console.log(`Listening on port ${PORT} ...`)
+		//********************************************************************/
+		
+		bot.telegram.webhookReply = false  // https://github.com/telegraf/telegraf/issues/917#issuecomment-592128274
+		
+		const botInfo = await bot.telegram.getMe()
+		bot.context.botInfo = botInfo
+		bot.options.username = botInfo.username
+		
+		const hookUrl = 'https://' + env.REMOTE_HOST + hookPath
+		console.log('hookUrl:', hookUrl)
+		await bot.telegram.setWebhook(hookUrl)
+	} else
+		await bot.launch()
+	
+	console.log('%s: Bot started as @%s',
+			new Date().toLocaleString('en-ZA-u-ca-persian'), bot.options.username)
+}, console.error.bind(console, 'DB connection error:'))
+//********************************************************************/
+
+// Keep services awake:
+
+const Axios = require('axios').default
+const cron = require('node-cron')
+
+const every10Minutes = Array.from({length: 60 / 10}, (v, k) => 10 * k).join(',')  // '0,10,20,...,50'
+
+cron.schedule(`${every10Minutes} * * * *`, () => {
+	const startTime = new Date()
+	Axios.get(process.env.PING_REMOTE_ORIGIN + '?ping', {timeout: 30000}).then(() =>
+			console.log('Response time: %sms', new Date() - startTime)
+	).catch(err => console.log('Bad or no response. %s:', err.name, err.message))
+}, {})

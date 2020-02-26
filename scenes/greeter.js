@@ -1,17 +1,9 @@
-const {
-	AesEncryption,
-	randomStr10,
-} = require('../utils')
-const {
-	verifyCredential,
-} = require('../functions')
-const {
-	AgahUser,
-	TgUser,
-} = require('../prepareDB')
-const {
-	BaseScene,
-} = require('./base-scene')
+const crypto = require('crypto')
+const outdent = require('outdent')
+const {AesEncryption} = require('../utils')
+const {verifyCredential} = require('../functions')
+const {AgahUser, TgUser} = require('../prepareDB')
+const {BaseScene} = require('./base-scene')
 
 /**
  * Created on 1398/11/25 (2020/2/14).
@@ -21,14 +13,15 @@ const {
 
 const env = process.env
 
-const aes = new AesEncryption(Buffer.from(env.AES_KEY, 'hex'))
-
+const aes = new AesEncryption(Buffer.from(env.AES_KEY, 'hex'), {defaultEncryptedEncoding: 'binary'})
 //*******************************************************************************/
 
 class PasswordScene extends BaseScene {
-	PLEASE_ENTER_PASSWORD = `رمز عبور خود را در <a href="https://bashgah.com/#!/login">سایت بآشگاه</a> وارد کنید:\n
-‼️ هشدار: ‼️
-<i>«رمزها» اصولاً اطلاعات محرمانه‌ای هستند! آن‌ها را در اختیار کسانی که بهشان اطمینان ندارید، قرار ندهید!</i>`
+	PLEASE_ENTER_PASSWORD = outdent`
+												رمز عبور خود را در <a href="https://bashgah.com/#!/login">سایت بآشگاه</a> وارد کنید:\n
+												‼️ هشدار: ‼️
+												<i>«رمزها» اصولاً اطلاعات محرمانه‌ای هستند! آن‌ها را در اختیار کسانی که بهشان اطمینان ندارید، قرار ندهید!</i>
+											`
 	
 	constructor() {
 		const name = 'password'
@@ -49,12 +42,6 @@ class PasswordScene extends BaseScene {
 		const username = session.username
 		const password = session.password = text
 		
-		// Exactly before 'لطفاً صبر کنید ...':
-		// console.log(session.requestUsernameMessage)  // temporary removed until solving this issue: https://github.com/telegraf/telegraf/issues/917#issuecomment-590959722
-		console.log(session.requestPasswordMessage)
-		ctx.telegram.deleteMessage(session.requestUsernameMessage.chat.id, session.requestUsernameMessage.message_id).then()
-		ctx.telegram.deleteMessage(session.requestPasswordMessage.chat.id, session.requestPasswordMessage.message_id).then()
-		
 		let result
 		try {
 			do {
@@ -66,6 +53,9 @@ class PasswordScene extends BaseScene {
 		}
 		const {bashgahInfo} = result
 		
+		// ctx.telegram.deleteMessage(session.requestUsernameMessage.chat.id, session.requestUsernameMessage.message_id).then()
+		// ctx.telegram.deleteMessage(session.requestPasswordMessage.chat.id, session.requestPasswordMessage.message_id).then()
+
 		if (bashgahInfo === undefined) {
 			ctx.reply(result)
 			ctx.scene.enter('username').then()
@@ -75,16 +65,15 @@ class PasswordScene extends BaseScene {
 		console.log('New correct credential:', username)
 		
 		const telegramInfo = ctx.from
-		const subSalt = randomStr10()
-		const salt = subSalt + username
-		const encryptedPassword = Buffer.from(aes.encrypt(salt + password))
+		const aesIv = crypto.randomBytes(16)
+		const encryptedPassword = aes.encrypt(password, aesIv)
 		
 		bashgahInfo.autoAnswer = false
 		const newUserData = {
 			name: bashgahInfo.user.customerTitle,
 			username,
 			encryptedPassword,
-			subSalt,
+			aesIv,
 			passwordIsValid: true,
 			isActive: true,
 			$addToSet: {tgUsers: session.tgUserId},
