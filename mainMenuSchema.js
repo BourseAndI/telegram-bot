@@ -1,8 +1,6 @@
 const Extra = require('telegraf/extra')
 const od = require('outdent')
 
-const MainMenu = require('./MainMenu')
-
 /**
  * Created on 1398/12/19 (2020/3/9).
  * @author {@link https://mirismaili.github.io S. Mahdi Mir-Ismaili}
@@ -22,7 +20,7 @@ const mdL = (text, link = 'https://t.me/BourseAndI_bot') => `[${text}](${link})`
 const markdown = text => ({text, extra: Extra.markdown()})
 //*******************************************************************************************/
 
-const mainMenuSchema = mainMenu => ({
+const mainMenuSchema = bot => mainMenu => ({
 	forehead: markdown(`${mdL('من و بورس')} » ${mdL('دستیار بورسی من')}`),
 	items: {
 		// submenu:
@@ -74,7 +72,7 @@ const mainMenuSchema = mainMenu => ({
 				back: {
 					text: '« برگشت',
 					// rerender main-menu:
-					do: async ctx => await mainMenu.menuLikes[mainMenu.rootAction].renderWith.editMessageText(ctx),
+					do: async ctx => await ctx.deleteMessage(),
 				},
 				// simple-button:
 				continue: {
@@ -111,14 +109,8 @@ const mainMenuSchema = mainMenu => ({
 		},
 	},
 })
-
-const mainMenu = new MainMenu(mainMenuSchema, {
-	backButton: '« برگشت',
-	homeButton: '«« منوی اصلی',
-})
 //console.log(mainMenu.actions);console.log(mainMenu.menus)
 
 module.exports = {
 	mainMenuSchema,
-	mainMenu,
 }

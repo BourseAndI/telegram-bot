@@ -1,5 +1,7 @@
 const crypto = require('crypto')
-const outdent = require('outdent')
+const od = require('outdent')
+
+const {RLM} = require('../constants')
 const {AesEncryption} = require('../utils')
 const {verifyCredential} = require('../functions')
 const {AgahUser, TgUser} = require('../prepareDB')
@@ -14,14 +16,17 @@ const {BaseScene} = require('./base-scene')
 const env = process.env
 
 const aes = new AesEncryption(Buffer.from(env.AES_KEY, 'hex'), {defaultEncryptedEncoding: 'binary'})
-//*******************************************************************************/
+
+const FLOWER_STICKER_1 = 'CAACAgQAAxkBAAPDXk1_P2rpYOGDJdWPwBklruV40SMAAuMAA_NilgYrEJPrbrOoTBgE'
+const HTML_WITHOUT_PREVIEW = {disable_web_page_preview: true, parse_mode: 'HTML'}
+//**************************************************************************************************/
 
 class PasswordScene extends BaseScene {
-	PLEASE_ENTER_PASSWORD = outdent`
-												رمز عبور خود را در <a href="https://bashgah.com/#!/login">سایت بآشگاه</a> وارد کنید:\n
-												‼️ هشدار: ‼️
-												<i>«رمزها» اصولاً اطلاعات محرمانه‌ای هستند! آن‌ها را در اختیار کسانی که بهشان اطمینان ندارید، قرار ندهید!</i>
-											`
+	PLEASE_ENTER_PASSWORD = od`
+											رمز عبور خود را در <a href="https://bashgah.com/#!/login">سایت بآشگاه</a> وارد کنید:\n
+											‼️ هشدار: ‼️
+											<i>«رمزها» اصولاً اطلاعات محرمانه‌ای هستند! آن‌ها را در اختیار کسانی که بهشان اطمینان ندارید، قرار ندهید!</i>
+										`
 	
 	constructor() {
 		const name = 'password'
@@ -30,12 +35,15 @@ class PasswordScene extends BaseScene {
 	
 	async onEnter(ctx) {
 		super.onEnter(ctx)
-		ctx.session.requestPasswordMessage =
-				await ctx.replyWithHTML(this.PLEASE_ENTER_PASSWORD, {disable_web_page_preview: true})
+		
+		const reqCredentialMsg = ctx.session.reqCredentialMsg
+		await ctx.telegram.editMessageText(reqCredentialMsg.chat.id, reqCredentialMsg.message_id, undefined,
+				this.PLEASE_ENTER_PASSWORD, HTML_WITHOUT_PREVIEW)
 	}
 	
 	async onText(text, ctx) {
-		ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id).then()
+		// delete entered password:
+		ctx.deleteMessage().then()
 		
 		const session = ctx.session
 		
@@ -53,13 +61,11 @@ class PasswordScene extends BaseScene {
 		}
 		const {bashgahInfo} = result
 		
-		// ctx.telegram.deleteMessage(session.requestUsernameMessage.chat.id, session.requestUsernameMessage.message_id).then()
-		// ctx.telegram.deleteMessage(session.requestPasswordMessage.chat.id, session.requestPasswordMessage.message_id).then()
-
+		ctx.telegram.deleteMessage(session.reqCredentialMsg.chat.id, session.reqCredentialMsg.message_id).then()
+		
 		if (bashgahInfo === undefined) {
-			ctx.reply(result)
-			ctx.scene.enter('username').then()
-			return
+			ctx.replyWithHTML('خطا:\n' + `<b>${result}</b>`)
+			return await ctx.scene.enter('username')
 		}
 		
 		console.log('New correct credential:', username)
@@ -84,7 +90,7 @@ class PasswordScene extends BaseScene {
 				TgUser.updateOne({id: telegramInfo.id}, {$addToSet: {agahUsers: agahUser._id}}).then(() => {
 					console.log('Upserted successfully:', username)
 					ctx.reply('تبریک 🌹\n به جمع کاربران ما خوش آمدید 💐').then()
-					ctx.replyWithSticker('CAACAgQAAxkBAAPDXk1_P2rpYOGDJdWPwBklruV40SMAAuMAA_NilgYrEJPrbrOoTBgE').then()
+					ctx.replyWithSticker(FLOWER_STICKER_1).then()
 					ctx.scene.leave()
 				}))
 				.catch(console.error.bind(console, 'Upsert Error:'))
@@ -92,7 +98,7 @@ class PasswordScene extends BaseScene {
 }
 
 class UsernameScene extends BaseScene {
-	PLEASE_ENTER_USERNAME = `نام کاربری خود را در <a href="https://bashgah.com/#!/login">سایت بآشگاه</a> وارد کنید:`
+	PLEASE_ENTER_USERNAME = `${RLM}\n\nنام کاربری خود را در <a href="https://bashgah.com/#!/login">سایت بآشگاه</a> وارد کنید:`
 	
 	constructor() {
 		super('username')
@@ -101,14 +107,13 @@ class UsernameScene extends BaseScene {
 	async onEnter(ctx) {
 		super.onEnter(ctx)
 		
-		ctx.session.requestUsernameMessage =
-				await ctx.replyWithHTML(this.PLEASE_ENTER_USERNAME, {disable_web_page_preview: true})
+		ctx.session.reqCredentialMsg = await ctx[ctx.updateType === 'callback_query' ? 'editMessageText' : 'reply'](
+				this.PLEASE_ENTER_USERNAME, HTML_WITHOUT_PREVIEW)
 	}
 	
 	onText(text, ctx) {
-		ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id).then()
-		
-		console.log('A', text)
+		// delete entered username:
+		ctx.deleteMessage().then()
 		
 		ctx.session.username = text
 		ctx.scene.enter('password').then()

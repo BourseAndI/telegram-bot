@@ -10,7 +10,8 @@ const {getExternalIP, writeHeadAndEnd} = require('./utils')
 const {HTTP_STATUS, CONTENT_TYPES} = require('./constants')
 const {dbConnectionPromise, TgUser} = require('./prepareDB')
 const gActions = require('./actions')
-const {mainMenu} = require('./mMenu')
+const {MainMenu} = require('./MainMenu')
+const {mainMenuSchema} = require('./mainMenuSchema')
 
 /**
  * Created on 1398/11/24 (2020/2/13).
@@ -106,6 +107,11 @@ bot.action(/.+/, async (ctx, next) => {
 //*******************************************************************************************/
 
 global['layoutDir'] = 'rtl'
+
+const mainMenu = new MainMenu(mainMenuSchema(bot), {
+	backButton: '« برگشت',
+	homeButton: '«« منوی اصلی',
+})
 
 for (const [trigger, middleware] of Object.entries(mainMenu.actions)) bot.action(trigger, middleware)
 

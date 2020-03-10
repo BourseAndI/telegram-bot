@@ -53,11 +53,13 @@ class MainMenu {
 			...item,
 		}))
 
+		const isMenu = !!menuItem.forehead
+		
 		// menu or prompt-item (question):
-		if (menuItem.forehead || menuItem.prompt) {
+		if (isMenu || menuItem.prompt) {
 			let forehead
 			
-			if (menuItem.forehead) {  // menu:
+			if (isMenu) {  // menu:
 				forehead = this.standardizeForehead(menuItem.forehead)
 				
 				if (parentAction) { // render navigation-buttons:
@@ -130,7 +132,7 @@ class MainMenu {
 			this.actions[action] = async (ctx, next) => {
 				ctx.answerCbQuery().then().catch(console.error)
 				
-				const editMenuPr = menuLike.renderWith.editMessageText(ctx)
+				const editMenuPr = menuLike.renderWith[isMenu ? 'editMessageText' : 'reply'](ctx)
 				
 				next()
 				await editMenuPr
@@ -148,4 +150,4 @@ class MainMenu {
 	}
 }
 
-module.exports = MainMenu
+module.exports = {MainMenu}

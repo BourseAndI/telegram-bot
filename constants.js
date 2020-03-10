@@ -4,6 +4,7 @@
  */
 'use strict'
 
+const NBSP = '\u00A0' // No-Break SPace
 const LRM = '\u200F'  // Left-to-Right Mark
 const RLM = '\u200F'  // Right-to-Left Mark
 
@@ -71,6 +72,7 @@ const CONTENT_TYPES = {
 }
 
 module.exports = {
+	NBSP,
 	LRM,
 	RLM,
 	HTTP_STATUS,
