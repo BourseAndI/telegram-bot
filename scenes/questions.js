@@ -1,13 +1,12 @@
-const outdent = require('outdent')
+const od = require('outdent')
 const Extra = require('telegraf/extra')
-const TelegrafInlineMenu = require('telegraf-inline-menu')
 
 const {BaseScene} = require('./base-scene')
 const {AgahCompetition} = require('../prepareDB')
 const {resolveActiveCompetitions, resolveCompetition} = require('../functions')
 const {BASHGAH_ORIGIN} = require('../values')
 const {RLM} = require('../constants')
-const {getOrDefineDeepPath, callbackButton2} = require('../utils')
+const {getOrDefineDeepPath, callbackBtn} = require('../utils')
 
 /**
  * Created on 1398/12/1 (2020/2/20).
@@ -61,14 +60,14 @@ class QuestionsScene extends BaseScene {
 			const qCodeFa = `<a href="${url}">${fa.format(competition.code)}</a>` + RLM
 			const hashTag = competition.score === 0 ? 'جسورانه' : fa.format(competition.score) + '_امتیازی'
 			
-			const caption = outdent`
+			const caption = od`
 								#${QUESTION_HASH_TAG} ${qCodeFa} (#${hashTag}):\n
 								${qBody}\n
 								@BashgahAuto_bot
 							`
 			
 			const keyboardCB = markup => markup.inlineKeyboard(competition.options.map((option, i) =>
-					callbackButton2.bind(markup)(`${String.fromCharCode(oneCode + i)}${RLM} ${option.body}`, ctx => {
+					callbackBtn.bind(markup)(`${String.fromCharCode(oneCode + i)}${RLM} ${option.body}`, ctx => {
 						ctx.reply(option.body)
 						ctx.answerCbQuery()
 					}/*, `agah:bashgah:competitionAnswer:${competition.code}:${i}`*/)), {columns: 1})

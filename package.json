@@ -19,7 +19,6 @@
     "node-cron": "^2.0.3",
     "outdent": "^0.7.0",
     "telegraf": "^3.36.0",
-    "telegraf-inline-menu": "^4.0.0",
     "uuid": "^7.0.1"
   },
   "devDependencies": {

@@ -9,6 +9,8 @@ const uuidV4 = require('uuid').v4
 const {getExternalIP, writeHeadAndEnd} = require('./utils')
 const {HTTP_STATUS, CONTENT_TYPES} = require('./constants')
 const {dbConnectionPromise, TgUser} = require('./prepareDB')
+const gActions = require('./actions')
+const {mainMenu} = require('./mMenu')
 
 /**
  * Created on 1398/11/24 (2020/2/13).
@@ -16,8 +18,10 @@ const {dbConnectionPromise, TgUser} = require('./prepareDB')
  */
 'use strict'
 const env = process.env
+//*******************************************************************************************/
 
 getExternalIP().then(console.log.bind(console, 'Public IP:')).catch(console.error.bind(console))
+//*******************************************************************************************/
 
 // Handler factories
 const {enter, leave} = Stage
@@ -27,17 +31,19 @@ const stage = new Stage()
 stage.command('cancel', leave())
 
 // Scene registration:
-const {UsernameScene, PasswordScene} = require('./scenes/greeter')
+const {UsernameScene, PasswordScene} = require('./scenes/add-user')
 const {QuestionsScene} = require('./scenes/questions')
 stage.register(
 		new UsernameScene(),
 		new PasswordScene(),
 		new QuestionsScene(),
 )
+//*******************************************************************************************/
 
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
 bot.use(session())
+// noinspection JSUnresolvedFunction
 bot.use(stage.middleware())
 
 bot.use(async (ctx, next) => {
@@ -78,21 +84,33 @@ bot.on('message', (ctx, next) => {
 	console.log('state', ctx.scene.state)
 	next()
 })
-bot.start(ctx => ctx.scene.enter('username'))
+// bot.start(ctx => ctx.scene.enter('username'))
 
 bot.command(['q', 'questions'], ctx => {
 	ctx.scene.enter('questions')
 })
+//*******************************************************************************************/
 
-global['actions'] = {}
+for (const [trigger, middleware] of Object.entries(gActions))
+// noinspection JSCheckFunctionSignatures
+	bot.action(trigger, middleware)
+
 bot.action(/.+/, async (ctx, next) => {
 	console.log(ctx.match[0])
-	const action = global['actions'][ctx.match[0]]
+	const action = gActions[ctx.match[0]]
 	
 	if (action) return await action(ctx, next)
 	
 	next()
 })
+//*******************************************************************************************/
+
+global['layoutDir'] = 'rtl'
+
+for (const [trigger, middleware] of Object.entries(mainMenu.actions)) bot.action(trigger, middleware)
+
+const rootMenu = mainMenu.menuLikes[mainMenu.rootAction]
+bot.start(rootMenu.renderWith.reply)
 
 dbConnectionPromise.then(async () => {
 	if (env.REMOTE_HOST) {
@@ -131,7 +149,7 @@ dbConnectionPromise.then(async () => {
 	console.log('%s: Bot started as @%s',
 			new Date().toLocaleString('en-ZA-u-ca-persian'), bot.options.username)
 }, console.error.bind(console, 'DB connection error:'))
-//********************************************************************/
+//***************************************************************************************************/
 
 // Keep services awake:
 
@@ -142,7 +160,7 @@ const every10Minutes = Array.from({length: 60 / 10}, (v, k) => 10 * k).join(',')
 
 cron.schedule(`${every10Minutes} * * * *`, () => {
 	const startTime = new Date()
-	Axios.get(process.env.PING_REMOTE_ORIGIN + '?ping', {timeout: 30000}).then(() =>
+	Axios.get(process.env.PING_REMOTE_ORIGIN + '?ping', {timeout: 60 * 1000}).then(() =>
 			console.log('Response time: %sms', new Date() - startTime)
 	).catch(err => console.log('Bad or no response. %s:', err.name, err.message))
 }, {})

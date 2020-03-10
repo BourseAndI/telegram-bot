@@ -186,7 +186,14 @@ const getOrDefineDeepPath = function (...deepPath) {
 	return obj
 }
 
-const callbackButton2 = function (text, callback, action = null) {
+/**
+ *
+ * @param text
+ * @param callback
+ * @param action
+ * @returns {CallbackButton}
+ */
+const callbackBtn = function (text, callback, action = null) {
 	if (action === null) action = uuidV4()
 	global['actions'][action] = (ctx, next) => {
 		ctx.answerCbQuery()
@@ -208,7 +215,7 @@ module.exports = {
 	jsonDateToUnixTimestamp,
 	deepGet,
 	getOrDefineDeepPath,
-	callbackButton2,
+	callbackBtn,
 	writeHeadAndEnd,
 	writeHeadAndEndJson,
 }
