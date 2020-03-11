@@ -146,8 +146,6 @@ class AesEncryption {
 	}
 }
 
-const aesEncrypt = text => this.getAesCtr().encrypt(aesjs.utils.utf8.toBytes(text))
-
 const randomStr10 = (l = undefined) => Math.random().toString(36).substr(2, l)
 
 const getExternalIP = () => new Promise((resolve, reject) =>
@@ -195,11 +193,17 @@ const getOrDefineDeepPath = function (...deepPath) {
  */
 const callbackBtn = function (text, callback, action = null) {
 	if (action === null) action = uuidV4()
-	global['actions'][action] = (ctx, next) => {
-		ctx.answerCbQuery()
-		return callback(ctx, next)
-	}
+	global.dynamicActions[action] = callback
+	
 	return this.callbackButton(text, action)
+}
+
+class SingleDigitToFa {
+	static ZERO_FA_CODE = '۰'.charCodeAt(0)
+	
+	static singleDigitToFa(digit) {
+		return String.fromCharCode(SingleDigitToFa.ZERO_FA_CODE + parseInt(digit))
+	}
 }
 
 module.exports = {
@@ -218,4 +222,5 @@ module.exports = {
 	callbackBtn,
 	writeHeadAndEnd,
 	writeHeadAndEndJson,
+	singleDigitToFa: SingleDigitToFa.singleDigitToFa,
 }

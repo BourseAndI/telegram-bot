@@ -22,18 +22,32 @@ class MainMenu {
 	actions = {}
 	menuLikes = {}
 	
-	constructor(schema, {
+	constructor(schema, bot, {
 		rootAction = '/',
 		actionsSeparator = '/',
-		backButton = '« Back',
-		homeButton = '«« Main Menu',
+		backBtnTxt = '« Back',
+		homeBtnTxt = '«« Main Menu',
 	} = {}) {
+		this.bot = bot
 		this.schema = schema(this)
 		this.rootAction = rootAction
 		this.actionsSeparator = actionsSeparator
-		this.backButton = backButton
-		this.homeButton = homeButton
+		this.backBtnTxt = backBtnTxt
+		this.homeBtnTxt = homeBtnTxt
+		//***********************************************************************/
+		
+		// define actions:
 		this.defineActions(this.schema, this.rootAction)
+		
+		this.rootMenu = this.menuLikes[this.rootAction]
+		
+		for (const [trigger, middleware] of Object.entries(this.actions)) bot.action(trigger, middleware)
+	}
+	
+	static normalizeForehead(forehead) {
+		return typeof forehead === 'string' || forehead instanceof String ?
+				{text: forehead, extra: Extra} :
+				forehead
 	}
 	
 	/**
@@ -52,7 +66,7 @@ class MainMenu {
 			action: action + itemKey + (item.items && Object.keys(item.items).length ? this.actionsSeparator : ''),
 			...item,
 		}))
-
+		
 		const isMenu = !!menuItem.forehead
 		
 		// menu or prompt-item (question):
@@ -60,35 +74,35 @@ class MainMenu {
 			let forehead
 			
 			if (isMenu) {  // menu:
-				forehead = this.standardizeForehead(menuItem.forehead)
+				forehead = menuItem.forehead
 				
 				if (parentAction) { // render navigation-buttons:
 					// render back-button:
 					items.push({
-						text: this.backButton,
+						text: this.backBtnTxt,
 						action: parentAction,
 					})
 					
 					if (parentAction !== this.rootAction) // render home-button:
 						items.push({
-							text: this.homeButton,
+							text: this.homeBtnTxt,
 							action: this.rootAction,
 						})
 				}
 				
 				for (const item of items)
-					if (item.wrap === undefined) item.wrap = (btn, index) => index !== items.length + 1  // wrap all except `homeButton`
+					if (item.wrap === undefined) item.wrap = (btn, index) => index !== items.length + 1  // wrap all except `homeButton` (by default)
 			} else
-				forehead = this.standardizeForehead(menuItem.prompt)
+				forehead = menuItem.prompt
 			
-			const menuLike = this.menuLikes[action] = new MenuLike(forehead, m => {
+			const menuLike = this.menuLikes[action] = new MenuLike(MainMenu.normalizeForehead(forehead), m => {
 				const choices = items.map(item => m.callbackButton(
 						item.text,
 						item.action,
 						item.hide,
 				))
 				
-				if (global['layoutDir'].toLowerCase() === 'rtl') {
+				if (layoutDir.toLowerCase() === 'rtl') {
 					const rows = []
 					m.inlineKeyboard(choices, {
 						wrap: (btn, index, currentRow) => {
@@ -140,13 +154,6 @@ class MainMenu {
 		}
 		
 		for (const item of items) this.defineActions(item, item.action, action)
-	}
-	
-	standardizeForehead(forehead) {
-		return typeof forehead === 'string' || forehead instanceof String ?
-				{text: forehead, extra: Extra} :
-				forehead.hasOwnProperty('extra') ?
-						forehead : {text: forehead.text, extra: Extra}
 	}
 }
 

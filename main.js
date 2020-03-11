@@ -9,7 +9,6 @@ const uuidV4 = require('uuid').v4
 const {getExternalIP, writeHeadAndEnd} = require('./utils')
 const {HTTP_STATUS, CONTENT_TYPES} = require('./constants')
 const {dbConnectionPromise, TgUser} = require('./prepareDB')
-const gActions = require('./actions')
 const {MainMenu} = require('./MainMenu')
 const {mainMenuSchema} = require('./mainMenuSchema')
 
@@ -21,46 +20,67 @@ const {mainMenuSchema} = require('./mainMenuSchema')
 const env = process.env
 //*******************************************************************************************/
 
-getExternalIP().then(console.log.bind(console, 'Public IP:')).catch(console.error.bind(console))
+getExternalIP().then(console.log.bind(console, 'Public IP:')).catch(console.error)
 //*******************************************************************************************/
 
-// Handler factories
+const bot = new Telegraf(process.env.BOT_TOKEN)
+
+// managing sessions and scenes:
+
 const {enter, leave} = Stage
 
-// Create scene manager
 const stage = new Stage()
-stage.command('cancel', leave())
+;['start', 'cancel'].map(command => stage.command(command, async (ctx, next) => {
+	userRegistrationMiddleware(ctx, () => {}).then()
+	leave()(ctx).then()
+	await global.mainMenu.rootMenu.renderWith.reply(ctx)
+}))
 
-// Scene registration:
+// register scenes:
 const {UsernameScene, PasswordScene} = require('./scenes/add-user')
-const {QuestionsScene} = require('./scenes/questions')
+const {QuestionsScene} = require('./scenes/bashgah-competitions')
 stage.register(
 		new UsernameScene(),
 		new PasswordScene(),
 		new QuestionsScene(),
 )
-//*******************************************************************************************/
-
-const bot = new Telegraf(process.env.BOT_TOKEN)
 
 bot.use(session())
-// noinspection JSUnresolvedFunction
 bot.use(stage.middleware())
+//*******************************************************************************************/
+// log actions + trigger dynamic-actions:
+global.dynamicActions = {}
+bot.action(/.+/, async (ctx, next) => {
+	const action = ctx.match[0]
+	console.log(action)
+	
+	if (global.dynamicActions[action]) return await global.dynamicActions[action](ctx, next)
+	next()
+})
 
-bot.use(async (ctx, next) => {
-	console.log('x')
+
+// user registration:
+async function userRegistrationMiddleware(ctx, next) {
+	console.log('\nstate:', ctx.scene.state)
+	
 	if (ctx.session.started) return next()
 	
 	ctx.session.started = true
 	const telegramInfo = ctx.from
 	
-	const tgUserPromise = TgUser.findOneAndUpdate({id: telegramInfo.id}, telegramInfo, {upsert: true, new: true})
-	tgUserPromise.then(tgUser => {
-		//console.log('Upserted:', tgUser)
-		ctx.session.tgUserId = tgUser._id
-	}).catch(console.error.bind(console, 'Upsert Error:'))
+	new Promise(async resolve => {
+		TgUser.findOneAndUpdate({id: telegramInfo.id}, telegramInfo, {upsert: true, new: true}).then(tgUser => {
+			console.log('Upserted: #%d @%s %j', tgUser.id, tgUser.username, tgUser.first_name + ' ' + tgUser.last_name)
+			resolve()
+		}).catch(e => {
+			console.error('Upsert Error:', e, telegramInfo)
+			ctx.reply('خطای غیر منتظره شماره ۳۸۶۱')
+			resolve()   // resolve anyway
+		})
+	})
 	
-	next().then(async () => await tgUserPromise)
+	next()
+	
 	// console.log('ctx.telegram', ctx.telegram)
 	// console.log('ctx.message', ctx.message)
 	// console.log('ctx.chat', ctx.chat)
@@ -79,46 +99,28 @@ bot.use(async (ctx, next) => {
 	// console.log('ctx.pollAnswer', ctx.pollAnswer)
 	// console.log('ctx.match', ctx.match)
 	// console.log('ctx.webhookReply', ctx.webhookReply)
-})
+}
 
-bot.on('message', (ctx, next) => {
-	console.log('state', ctx.scene.state)
-	next()
-})
-// bot.start(ctx => ctx.scene.enter('username'))
-
-bot.command(['q', 'questions'], ctx => {
-	ctx.scene.enter('questions')
-})
+bot.use(userRegistrationMiddleware)
 //*******************************************************************************************/
 
-for (const [trigger, middleware] of Object.entries(gActions))
-// noinspection JSCheckFunctionSignatures
-	bot.action(trigger, middleware)
-
-bot.action(/.+/, async (ctx, next) => {
-	console.log(ctx.match[0])
-	const action = gActions[ctx.match[0]]
-	
-	if (action) return await action(ctx, next)
-	
-	next()
-})
+// register global actions:
+for (const [trigger, middleware] of Object.entries(require('./actions'))) bot.action(trigger, middleware)
 //*******************************************************************************************/
 
-global['layoutDir'] = 'rtl'
-
-const mainMenu = new MainMenu(mainMenuSchema(bot), {
-	backButton: '« برگشت',
-	homeButton: '«« منوی اصلی',
-})
-
-for (const [trigger, middleware] of Object.entries(mainMenu.actions)) bot.action(trigger, middleware)
-
-const rootMenu = mainMenu.menuLikes[mainMenu.rootAction]
-bot.start(rootMenu.renderWith.reply)
-
-dbConnectionPromise.then(async () => {
+Promise.all([bot.telegram.getMe(), dbConnectionPromise]).then(async ([botInfo, _]) => {
+	bot.context.botInfo = botInfo
+	bot.options.username = botInfo.username
+	
+	// create main-menu (after `bot` initialization):
+	global.layoutDir = 'rtl'
+	
+	global.mainMenu = new MainMenu(mainMenuSchema, bot, {
+		backBtnTxt: '« برگشت',
+		homeBtnTxt: '«« منوی اصلی',
+	})
+	
+	// launch:
 	if (env.REMOTE_HOST) {
 		const PORT = env.PORT || 6000
 		const hookPath = '/' + uuidV4()
@@ -142,19 +144,17 @@ dbConnectionPromise.then(async () => {
 		
 		bot.telegram.webhookReply = false  // https://github.com/telegraf/telegraf/issues/917#issuecomment-592128274
 		
-		const botInfo = await bot.telegram.getMe()
-		bot.context.botInfo = botInfo
-		bot.options.username = botInfo.username
-		
 		const hookUrl = 'https://' + env.REMOTE_HOST + hookPath
 		console.log('hookUrl:', hookUrl)
 		await bot.telegram.setWebhook(hookUrl)
-	} else
-		await bot.launch()
+	} else {
+		await bot.telegram.deleteWebhook()
+		await bot.startPolling()
+	}
 	
 	console.log('%s: Bot started as @%s',
 			new Date().toLocaleString('en-ZA-u-ca-persian'), bot.options.username)
-}, console.error.bind(console, 'DB connection error:'))
+}, console.error)
 //***************************************************************************************************/
 
 // Keep services awake:
